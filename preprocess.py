@@ -30,20 +30,31 @@ parser.add_argument('--pivot-lang', type=str, default='en',
                     help='Target pivot language')
 parser.add_argument('--emb-dim', type=int, default=300,
                     help='Embedding Dimension')
-parser.add_argument('--lower', action='store_true',
-                    help='Lowercase lemmas from wordnet.')
+parser.add_argument('--max-vocab', type=int, default=10000,
+                    help='Max Vocab per language')
+
 
 args = parser.parse_args()
 word2idx = {'<unk>':0}
 idx2word = ['<unk>']
 emb_dict = {'<unk>':np.random.rand(300,).tolist()}
 
-nlp_en = spacy.load("en")
-nlp_de = spacy.load("de")
-nlp_fr = spacy.load("fr")
-nlp_pt = spacy.load("pt")
-nlp_it = spacy.load("it")
-nlp_es = spacy.load("es")
+spacy.require_gpu()
+
+nlp_en = spacy.load("en", disable=["parser", "ner", "textcat"])
+nlp_de = spacy.load("de", disable=["parser", "ner", "textcat"])
+nlp_fr = spacy.load("fr", disable=["parser", "ner", "textcat"])
+nlp_pt = spacy.load("pt", disable=["parser", "ner", "textcat"])
+nlp_it = spacy.load("it", disable=["parser", "ner", "textcat"])
+nlp_es = spacy.load("es", disable=["parser", "ner", "textcat"])
+
+# nlp_en.pipeline = [nlp_en.tagger]
+# nlp_de.pipeline = [nlp_de.tagger]
+# nlp_fr.pipeline = [nlp_fr.tagger]
+# nlp_pt.pipeline = [nlp_pt.tagger]
+# nlp_it.pipeline = [nlp_it.tagger]
+# nlp_es.pipeline = [nlp_es.tagger]
+
 
 # nlp_xx = spacy.load("xx_core_web_sm")
 
@@ -82,6 +93,8 @@ def load_embeddings(lng):
         for idx, lines in enumerate(f):
             if idx == 0:
                 continue
+            if idx > args.max_vocab:
+                break
             word, vect = lines.rstrip('\n').split(' ', 1)
             word = (lng + '_' + word.lower())
             vect = np.fromstring(vect, sep=' ')
@@ -109,7 +122,8 @@ def create_joint_embeddings():
 def preprocess():
     all_lng = ['de', 'es', 'fr', 'it', 'pt', 'en']
     tgt_lng = args.pivot_lang
-    src_lng = all_lng.remove(tgt_lng)
+    all_lng.remove(tgt_lng)
+    src_lng = all_lng
     fout = open(os.path.join(args.data, 'crosslingual/dictionaries/train.' + tgt_lng + '.txt'), 'w')
     load_embeddings(tgt_lng)
     print('Loaded embeddings for language: ' + str(tgt_lng))
@@ -117,23 +131,26 @@ def preprocess():
         fin = open(os.path.join(args.data, 'crosslingual/dictionaries/' + src + '-' + tgt_lng + '.0-5000.txt'), 'r')
         for lines in fin:
             lines  = lines.rstrip('\n').split()
-            add_word(src + '_' + lines[0])
-            add_word(src + '_' + lines[1])
+            try:
+                add_word(src + '_' + lines[0])
+                add_word(src + '_' + lines[1])
+            except:
+                continue
             nlp_src = return_spacy_model(src)
-            nlp_tgt = return_spacy_model(tgt)
+            nlp_tgt = return_spacy_model(tgt_lng)
             src_pos = nlp_src(lines[0])[0].pos_
             tgt_pos = nlp_tgt(lines[1])[0].pos_
 
-
             output = {'x': src + '_' + lines[0], 'y': src + '_' + lines[1], 'pos_x': src_pos, 'pos_y': tgt_pos}
             fout.write(str(json.dumps(output) + '\n'))
-            load_embeddings(src)
-            print('Loaded embeddings for language: ' + str(src))
+        load_embeddings(src)
+        print('Loaded embeddings for language: ' + str(src))
 
     if not os.path.isfile(os.path.join(args.data, 'joined_emb.pb')):
         embs = create_joint_embeddings()
         print('Created joint embeddings')
-        pickle.dumps(embs, open(os.path.join(args.data, 'joined_emb.pb'), 'wb'))
+        pickle.dump(embs, open(os.path.join(args.data, 'joined_emb.pb'), 'wb'))
+        pickle.dump(idx2word, open(os.path.join(args.data, 'vocab.pb'), 'wb'))
         print('Saved joint embeddings')
 
 preprocess()
