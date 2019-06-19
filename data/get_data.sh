@@ -47,17 +47,36 @@ do
       for suffix in .txt .0-5000.txt .5000-6500.txt
       do
         fname=$src_lg-$tgt_lg$suffix
-        curl -Lo crosslingual/dictionaries/$fname $dl_path/dictionaries/$fname
+        if [ ! -f crosslingual/dictionaries/$fname ]; then
+            curl -Lo crosslingual/dictionaries/$fname $dl_path/dictionaries/$fname
+        fi
       done
     fi
   done
+done
+
+cat crosslingual/dictionaries/*.0-5000.txt > crosslingual/dictionaries/train_crosslingual.txt
+
+# Download fasttext embeddings
+# curl -Lo data/wiki.en.vec https://dl.fbaipublicfiles.com/fasttext/vectors-wiki/wiki.en.vec
+fasttext_dlpath='https://dl.fbaipublicfiles.com/fasttext/vectors-wiki/wiki.'
+fasttext_path='wiki.'
+
+for src_lg in de es fr it pt en
+do
+    fname=monolingual/$fasttext_path$src_lg.vec
+    if [ ! -f $fname ]; then
+        curl -Lo $fname $fasttext_dlpath$src_lg.vec
+    fi
 done
 
 ## Download Dinu et al. dictionaries
 for fname in OPUS_en_it_europarl_train_5K.txt OPUS_en_it_europarl_test.txt
 do
     echo $fname
-    curl -Lo crosslingual/dictionaries/$fname $dl_path/dictionaries/$fname
+    if [ ! -f crosslingual/dictionaries/$fname ]; then
+        curl -Lo crosslingual/dictionaries/$fname $dl_path/dictionaries/$fname
+    fi
 done
 
 ## Monolingual wordsim tasks
@@ -68,7 +87,9 @@ do
   for wsim in ${wordsim_lg[$lang]}
   do
     echo $wsim
-    curl -Lo monolingual/$lang/$wsim $dl_path/$lang/$wsim
+    if [ ! -f monolingual/$lang/$wsim ]; then
+        curl -Lo monolingual/$lang/$wsim $dl_path/$lang/$wsim
+    fi
   done
 done
 
