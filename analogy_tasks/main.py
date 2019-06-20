@@ -133,7 +133,7 @@ class AnalogyExperiment():
 
             for i, row in enumerate(data_reader):
                 all_present = True
-                w1, w2, w3, w4 = row[0], row[1], row[2], row[3]
+                w1, w2, w3, w4 = 'en_' + row[0], 'en_' + row[1], 'en_' + row[2], 'en_' + row[3]
                 if i%1000 == 0:
                     print('Processed ' + str(i+1) + ' test examples')
                 try:
