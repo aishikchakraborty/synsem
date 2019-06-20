@@ -12,18 +12,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.onnx
 import _pickle as pickle
-from tensorboardX import SummaryWriter
-
 import model
-
-import csv
-csv.field_size_limit(100000000)
-
 from random import shuffle
-from torchtext import data, datasets
-import torchtext
-import csv
-csv.field_size_limit(100000000)
 
 
 parser = argparse.ArgumentParser(description='PyTorch Wikitext-2 RNN/LSTM Language Model')
@@ -87,7 +77,7 @@ parser.add_argument('--neg_wn_ratio', type=float, default=10,
                     help='Negative sampling ratio for lexical subspaces.')
 parser.add_argument('--distance', type=str, default='cosine',
                     help='Type of distance to use. Options are [pairwise, cosine]')
-parser.add_argument('--optim', type=str, default='sgd',
+parser.add_argument('--optim', type=str, default='adam',
                     help='Type of optimizer to use. Options are [sgd, adagrad, adam]')
 parser.add_argument('--reg', action='store_true', help='Regularize.')
 parser.add_argument('--max_vocab_size', type=int, default=None,
@@ -97,6 +87,7 @@ parser.add_argument('--pivot-lang', type=str, default='en',
 args = parser.parse_args()
 
 print(args)
+
 if args.random_seed is not None:
     random.seed(args.random_seed)
 if args.numpy_seed is not None:
@@ -123,11 +114,11 @@ class Dataset():
 
     def load_vocab(self):
         self.vocab = pickle.load(open(os.path.join(args.data, 'vocab.pb'), 'rb'))
-        self.w2idx = {w:idx for idx, w in enumerate(vocab)}
+        self.w2idx = {w:idx for idx, w in enumerate(self.vocab)}
 
     def load_dataset(self):
         self.load_vocab()
-        f = open(path, 'r')
+        f = open(self.path, 'r')
         for lines in f:
             lines = json.loads(lines.rstrip('\n'))
             self.x.append(self.w2idx[lines['x']])
@@ -135,27 +126,31 @@ class Dataset():
             self.pos_x.append(lines['pos_x'])
             self.pos_y.append(lines['pos_y'])
 
-        pos_classes = set(self.pos_x)
-        p2idx = {p:idx for idx, p in enumerate(pos_classes)}
-        self.pos_x = [p2idx[p] for p in self.pos_x]
-        self.pos_y = [p2idx[p] for p in self.pos_y]
+
+        self.pos_classes_x = set(self.pos_x)
+        self.pos_classes_y = set(self.pos_y)
+
+        p2idx_x = {p:idx for idx, p in enumerate(self.pos_classes_x)}
+        p2idx_y = {p:idx for idx, p in enumerate(self.pos_classes_y)}
+        self.pos_x = [p2idx_x[p] for p in self.pos_x]
+        self.pos_y = [p2idx_y[p] for p in self.pos_y]
 
 d = Dataset(os.path.join(args.data, 'crosslingual/dictionaries/train.' + args.pivot_lang + '.txt'))
 d.load_dataset()
 print('Loaded and binarized datasets')
 
-emb = pickle.load(open(os.path.join(args.data, 'joined_emb.pb'), 'rb'))
+emb = torch.tensor(pickle.load(open(os.path.join(args.data, 'joined_emb.pb'), 'rb'))).to(device)
 
 lr = args.lr
 best_val_loss = None
 
-synsem = model.Synsem(len(d.vocab), args.emsize, len(set(d.pos_x)), emb).to(device)
+synsem = model.Synsem(len(d.vocab), args.emsize, len(d.pos_classes_x), len(d.pos_classes_y), emb).to(device)
 
 criterion = nn.CrossEntropyLoss()
 
-optimizer = torch.optim.Adagrad(model.parameters(), lr=lr) if args.optim == 'adagrad' \
-                else torch.optim.Adam(model.parameters(), lr=lr) if args.optim == 'adam' \
-                else torch.optim.SGD(model.parameters(), lr=lr)
+optimizer = torch.optim.Adagrad(synsem.parameters(), lr=lr) if args.optim == 'adagrad' \
+                else torch.optim.Adam(synsem.parameters(), lr=lr) if args.optim == 'adam' \
+                else torch.optim.SGD(synsem.parameters(), lr=lr)
 
 milestones = [10, 20, 30, 40]
 print(milestones)
@@ -175,21 +170,21 @@ def train(epoch):
     num_batches = len(d.x)//args.batch_size
 
     for i in range(num_batches):
-        batch_x = d.x[i*args.batch_size : (i+1)*args.batch_size]
-        batch_y = d.y[i*args.batch_size : (i+1)*args.batch_size]
-        batch_pos_x = d.pos_x[i*args.batch_size : (i+1)*args.batch_size]
-        batch_pos_y = d.pos_y[i*args.batch_size : (i+1)*args.batch_size]
+        batch_x = torch.LongTensor(d.x[i*args.batch_size : (i+1)*args.batch_size]).to(device)
+        batch_y = torch.LongTensor(d.y[i*args.batch_size : (i+1)*args.batch_size]).to(device)
+        batch_pos_x = torch.LongTensor(d.pos_x[i*args.batch_size : (i+1)*args.batch_size]).to(device)
+        batch_pos_y = torch.LongTensor(d.pos_y[i*args.batch_size : (i+1)*args.batch_size]).to(device)
 
         optimizer.zero_grad()
 
-        translation_loss, recosntruction_loss, semantic_loss, pos_x, pos_y = synsem(batch_x, batch_y)
+        translation_loss, reconstruction_loss, semantic_loss, pos_x, pos_y = synsem(batch_x, batch_y)
         syntactic_loss = (criterion(pos_x, batch_pos_x) + criterion(pos_y, batch_pos_y))
-        total_loss = translation_loss + recosntruction_loss + semantic_loss + syntactic_loss
+        total_loss = translation_loss + reconstruction_loss + semantic_loss + syntactic_loss
 
         total_loss.backward()
 
         # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
-        torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
+        torch.nn.utils.clip_grad_norm_(synsem.parameters(), args.clip)
         optimizer.step()
 
         total_loss_ += total_loss.item()
