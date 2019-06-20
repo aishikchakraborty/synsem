@@ -196,13 +196,14 @@ def train(epoch):
         if i % args.log_interval == 0 and i > 0:
             cur_loss = total_loss_ / args.log_interval
             cur_translation_loss = translation_loss_ / args.log_interval
+            cur_reconstruction_loss = reconstruction_loss_ / args.log_interval
             cur_semantic_loss = semantic_loss_ / args.log_interval
             cur_syntactic_loss = syntactic_loss_ / args.log_interval
 
             elapsed = time.time() - start_time
-            print('| epoch {:3d} | {:5d}/{:5d} batches | lr {:02.10f} | ms/batch {:5.2f} | loss {:5.2f} | translation loss {:5.2f} | semantic loss {:5.2f} | syntactic loss {:5.2f} |'
+            print('| epoch {:3d} | {:5d}/{:5d} batches | lr {:02.10f} | ms/batch {:5.2f} | loss {:5.2f} | translation loss {:5.2f} |  reconstruction loss {:5.2f} | semantic loss {:5.2f} | syntactic loss {:5.2f} |'
                     .format(epoch, i, num_batches, optimizer.param_groups[0]['lr'], elapsed * 1000 / args.log_interval,
-                        cur_loss, cur_translation_loss, cur_semantic_loss, cur_semantic_loss))
+                        cur_loss, cur_translation_loss, cur_reconstruction_loss, cur_semantic_loss, cur_semantic_loss))
 
 
             start_time = time.time()
