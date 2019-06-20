@@ -1,2 +1,5 @@
 data/crosslingual/*
 data/monolingual/*
+models/*
+data/*
+embeddings/*

@@ -17,7 +17,7 @@ from random import shuffle
 
 
 parser = argparse.ArgumentParser(description='PyTorch Wikitext-2 RNN/LSTM Language Model')
-parser.add_argument('--data', type=str, default='data/',
+parser.add_argument('--data', type=str, default='data',
                     help='location of the data corpus')
 parser.add_argument('--model', type=str, default='rnn',
                     help='type of model. Options are [retro, rnn, cbow]')
@@ -63,7 +63,7 @@ parser.add_argument('--cuda', action='store_true',
                     help='use CUDA')
 parser.add_argument('--gpu', type=int, default=0,
                     help='use gpu x')
-parser.add_argument('--log-interval', type=int, default=2000, metavar='N',
+parser.add_argument('--log-interval', type=int, default=100, metavar='N',
                     help='report interval')
 parser.add_argument('--save', type=str, default='models/',
                     help='path to save the final model')
@@ -193,7 +193,7 @@ def train(epoch):
         semantic_loss_ += semantic_loss.item()
         syntactic_loss_ += syntactic_loss.item()
 
-        if idx % args.log_interval == 0 and idx > 0:
+        if i % args.log_interval == 0 and i > 0:
             cur_loss = total_loss_ / args.log_interval
             cur_translation_loss = translation_loss_ / args.log_interval
             cur_semantic_loss = semantic_loss_ / args.log_interval
@@ -201,7 +201,7 @@ def train(epoch):
 
             elapsed = time.time() - start_time
             print('| epoch {:3d} | {:5d}/{:5d} batches | lr {:02.10f} | ms/batch {:5.2f} | loss {:5.2f} | translation loss {:5.2f} | semantic loss {:5.2f} | syntactic loss {:5.2f} |'
-                    .format(epoch, i, len(num_batches), optimizer.param_groups[0]['lr'], elapsed * 1000 / args.log_interval,
+                    .format(epoch, i, num_batches, optimizer.param_groups[0]['lr'], elapsed * 1000 / args.log_interval,
                         cur_loss, cur_translation_loss, cur_semantic_loss, cur_semantic_loss))
 
 
@@ -226,13 +226,13 @@ try:
         epoch_start_time = time.time()
         train(epoch)
 
-        print('Saving Model')
-        with open(model_name, 'wb') as f:
-            torch.save(model, f)
-        print('Saving learnt embeddings : %s' % emb_name)
-        pickle.dump(synsem.syn_emb.weight.data, open(syn_emb_name, 'wb'))
-        pickle.dump(synsem.sem_emb.weight.data, open(sem_emb_name, 'wb'))
-        pickle.dump(synsem.W.weight.data, open(w_name, 'wb'))
+        #print('Saving Model')
+        #with open(model_name, 'wb') as f:
+        #    torch.save(synsem, f)
+        #print('Saving learnt embeddings : %s' % syn_emb_name)
+        #pickle.dump(synsem.syn_emb.weight.data, open(syn_emb_name, 'wb'))
+        #pickle.dump(synsem.sem_emb.weight.data, open(sem_emb_name, 'wb'))
+        #pickle.dump(synsem.W.weight.data, open(w_name, 'wb'))
 
 except KeyboardInterrupt:
     print('-' * 89)
