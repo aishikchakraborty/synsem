@@ -43,7 +43,7 @@ parser.add_argument('--lr', type=float, default=0.001,
                     help='initial learning rate')
 parser.add_argument('--clip', type=float, default=0.25,
                     help='gradient clipping')
-parser.add_argument('--epochs', type=int, default=50,
+parser.add_argument('--epochs', type=int, default=75,
                     help='upper epoch limit')
 parser.add_argument('--batch-size', type=int, default=20, metavar='N',
                     help='batch size')
@@ -227,14 +227,16 @@ try:
         epoch_start_time = time.time()
         train(epoch)
 
-        #print('Saving Model')
-        #with open(model_name, 'wb') as f:
-        #    torch.save(synsem, f)
-        #print('Saving learnt embeddings : %s' % syn_emb_name)
-        #pickle.dump(synsem.syn_emb.weight.data, open(syn_emb_name, 'wb'))
-        #pickle.dump(synsem.sem_emb.weight.data, open(sem_emb_name, 'wb'))
-        #pickle.dump(synsem.W.weight.data, open(w_name, 'wb'))
+
 
 except KeyboardInterrupt:
     print('-' * 89)
     print('Exiting from training early')
+
+print('Saving Model')
+with open(model_name, 'wb') as f:
+   torch.save(synsem, f)
+print('Saving learnt embeddings : %s' % syn_emb_name)
+pickle.dump(synsem.syn_emb.weight.data, open(syn_emb_name, 'wb'))
+pickle.dump(synsem.sem_emb.weight.data, open(sem_emb_name, 'wb'))
+pickle.dump(synsem.W.weight.data, open(w_name, 'wb'))
