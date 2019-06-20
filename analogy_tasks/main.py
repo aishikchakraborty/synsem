@@ -10,7 +10,7 @@ from scipy.stats import pearsonr
 from sklearn.metrics import average_precision_score
 import _pickle as pickle
 
-import hypernymysuite_eval
+# import hypernymysuite_eval
 
 parser = argparse.ArgumentParser(description='PyTorch Wikitext-2 RNN/LSTM Language Model')
 parser.add_argument('--emb', type=str, default='../emb_Vanilla.pkl',
@@ -111,7 +111,7 @@ class AnalogyExperiment():
 
     def load_vocab(self):
         self.vocab = pickle.load(open(args.vocab,'rb'))
-        print(self.vocab)
+        # print(self.vocab)
         self.emb = pickle.load(open(args.emb, 'rb'))
 
     def cossim(self, v1, v2):
