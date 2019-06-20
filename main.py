@@ -239,4 +239,4 @@ with open(model_name, 'wb') as f:
 print('Saving learnt embeddings : %s' % syn_emb_name)
 pickle.dump(synsem.syn_emb.weight.data, open(syn_emb_name, 'wb'))
 pickle.dump(synsem.sem_emb.weight.data, open(sem_emb_name, 'wb'))
-pickle.dump(synsem.W.weight.data, open(w_name, 'wb'))
+pickle.dump(synsem.W.data, open(w_name, 'wb'))
