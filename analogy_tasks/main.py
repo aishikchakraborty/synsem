@@ -121,7 +121,7 @@ class AnalogyExperiment():
     def load_google_dataset(self):
         # for d in ['googleanalogytestset', 'biggeranalogytestset']:
         # for d in ['googleanalogytestset']:
-        for d in ['semantics_analogytest', 'syntactic_analogytest']:
+        for d in ['syntactic_analogytest', 'semantics_analogytest']:
             print('*'*89)
             print(d)
             print('-'*89)
@@ -137,6 +137,7 @@ class AnalogyExperiment():
                 if i%1000 == 0:
                     print('Processed ' + str(i+1) + ' test examples')
                 try:
+                    # print(w1)
                     w1_ = self.vocab.stoi[w1.lower()]
                     w1 = self.emb[self.vocab.stoi[w1.lower()]].view(1, -1)
 
@@ -144,20 +145,24 @@ class AnalogyExperiment():
                     all_present = False
                     # w1 = self.sem_emb[self.['<unk>']].reshape(-1, 1)
                 try:
+                    # print(w2)
                     w2_ = self.vocab.stoi[w2.lower()]
                     w2 = self.emb[self.vocab.stoi[w2.lower()]].view(1, -1)
+
                 except:
                     all_present = False
                     # w2 = self.sem_emb[self.w2idx['<unk>']].reshape(-1, 1)
                 try:
                     w3_ = self.vocab.stoi[w3.lower()]
                     w3 = self.emb[self.vocab.stoi[w3.lower()]].view(1, -1)
+                    print(w3)
                 except:
                     all_present = False
                     # w3 = self.sem_emb[self.w2idx['<unk>']].reshape(-1, 1)
 
                 try:
                     w4 = self.vocab.stoi[w4.lower()]
+                    print(w4)
                 except:
                     all_present = False
                     # w4 = self.w2idx['<unk>']

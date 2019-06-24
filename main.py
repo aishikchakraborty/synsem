@@ -43,7 +43,7 @@ parser.add_argument('--lr', type=float, default=0.001,
                     help='initial learning rate')
 parser.add_argument('--clip', type=float, default=0.25,
                     help='gradient clipping')
-parser.add_argument('--epochs', type=int, default=75,
+parser.add_argument('--epochs', type=int, default=10,
                     help='upper epoch limit')
 parser.add_argument('--batch-size', type=int, default=20, metavar='N',
                     help='batch size')
@@ -113,16 +113,19 @@ class Dataset():
         self.pos_y = []
 
     def load_vocab(self):
-        self.vocab = pickle.load(open(os.path.join(args.data, 'vocab.pb'), 'rb'))
-        self.w2idx = {w:idx for idx, w in enumerate(self.vocab)}
+        self.src_vocab = pickle.load(open(os.path.join(args.data, 'src_vocab_' + args.pivot_lang + '.pb'), 'rb'))
+        self.src_w2idx = {w:idx for idx, w in enumerate(self.src_vocab)}
+        self.tgt_vocab = pickle.load(open(os.path.join(args.data, 'tgt_vocab_' + args.pivot_lang + '.pb'), 'rb'))
+        self.tgt_w2idx = {w:idx for idx, w in enumerate(self.tgt_vocab)}
 
     def load_dataset(self):
         self.load_vocab()
         f = open(self.path, 'r')
         for lines in f:
+            # print(lines)
             lines = json.loads(lines.rstrip('\n'))
-            self.x.append(self.w2idx[lines['x']])
-            self.y.append(self.w2idx[lines['y']])
+            self.x.append(self.src_w2idx[lines['x']])
+            self.y.append(self.tgt_w2idx[lines['y']])
             self.pos_x.append(lines['pos_x'])
             self.pos_y.append(lines['pos_y'])
 
@@ -139,12 +142,13 @@ d = Dataset(os.path.join(args.data, 'crosslingual/dictionaries/train.' + args.pi
 d.load_dataset()
 print('Loaded and binarized datasets')
 
-emb = torch.tensor(pickle.load(open(os.path.join(args.data, 'joined_emb.pb'), 'rb'))).to(device)
+src_emb = torch.tensor(pickle.load(open(os.path.join(args.data, 'src_emb_' + args.pivot_lang + '.pb'), 'rb'))).to(device)
+tgt_emb = torch.tensor(pickle.load(open(os.path.join(args.data, 'tgt_emb_' + args.pivot_lang + '.pb'), 'rb'))).to(device)
 
 lr = args.lr
 best_val_loss = None
 
-synsem = model.Synsem(len(d.vocab), args.emsize, len(d.pos_classes_x), len(d.pos_classes_y), emb).to(device)
+synsem = model.Synsem(len(d.src_vocab), len(d.tgt_vocab), args.emsize, len(d.pos_classes_x), len(d.pos_classes_y), src_emb, tgt_emb).to(device)
 
 criterion = nn.CrossEntropyLoss()
 
@@ -216,8 +220,12 @@ def train(epoch):
     print()
 
 
+common_vocab = d.src_vocab[1:] + d.tgt_vocab # remove UNK from src vocab
+final_emb = torch.cat((torch.mm(synsem.src_emb.weight.data[1:, :], synsem.W.data), synsem.tgt_emb.weight.data), dim=0)
 
 model_name = os.path.join(args.save, 'model_' + args.data + '_'  + str(args.emsize) + '_' + args.pivot_lang + '.pt')
+common_vocab_name = os.path.join(args.save_emb, 'common_vocab_' + args.data + '_'  + str(args.emsize) + '_' + args.pivot_lang + '.pb')
+final_emb_name = os.path.join(args.save_emb, 'final_emb_' + args.data + '_'  + str(args.emsize) + '_' + args.pivot_lang + '.pb')
 syn_emb_name = os.path.join(args.save_emb, 'syn_emb_' + args.data + '_'  + str(args.emsize) + '_' + args.pivot_lang + '.pb')
 sem_emb_name = os.path.join(args.save_emb, 'sem_emb_' + args.data + '_'  + str(args.emsize) + '_' + args.pivot_lang + '.pb')
 w_name = os.path.join(args.save_emb, 'W_' + args.data + '_'  + str(args.emsize) + '_' + args.pivot_lang + '.pb')
@@ -227,8 +235,6 @@ try:
         epoch_start_time = time.time()
         train(epoch)
 
-
-
 except KeyboardInterrupt:
     print('-' * 89)
     print('Exiting from training early')
@@ -237,6 +243,8 @@ print('Saving Model')
 with open(model_name, 'wb') as f:
    torch.save(synsem, f)
 print('Saving learnt embeddings : %s' % syn_emb_name)
-pickle.dump(synsem.syn_emb.weight.data, open(syn_emb_name, 'wb'))
-pickle.dump(synsem.sem_emb.weight.data, open(sem_emb_name, 'wb'))
+pickle.dump(final_emb, open(final_emb_name, 'wb'))
+pickle.dump(common_vocab, open(common_vocab_name, 'wb'))
+pickle.dump(torch.mm(final_emb, synsem.M.data), open(syn_emb_name, 'wb'))
+pickle.dump(torch.mm(final_emb, synsem.N.data), open(sem_emb_name, 'wb'))
 pickle.dump(synsem.W.data, open(w_name, 'wb'))
