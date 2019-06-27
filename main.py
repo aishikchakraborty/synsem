@@ -43,7 +43,7 @@ parser.add_argument('--lr', type=float, default=0.001,
                     help='initial learning rate')
 parser.add_argument('--clip', type=float, default=0.25,
                     help='gradient clipping')
-parser.add_argument('--epochs', type=int, default=75,
+parser.add_argument('--epochs', type=int, default=10,
                     help='upper epoch limit')
 parser.add_argument('--batch-size', type=int, default=20, metavar='N',
                     help='batch size')
@@ -63,6 +63,8 @@ parser.add_argument('--cuda', action='store_true',
                     help='use CUDA')
 parser.add_argument('--gpu', type=int, default=0,
                     help='use gpu x')
+parser.add_argument('--beta', type=int, default=0.001,
+                    help='beta for orthogonalization')
 parser.add_argument('--log-interval', type=int, default=100, metavar='N',
                     help='report interval')
 parser.add_argument('--save', type=str, default='models/',
@@ -113,16 +115,19 @@ class Dataset():
         self.pos_y = []
 
     def load_vocab(self):
-        self.vocab = pickle.load(open(os.path.join(args.data, 'vocab.pb'), 'rb'))
-        self.w2idx = {w:idx for idx, w in enumerate(self.vocab)}
+        self.src_vocab = pickle.load(open(os.path.join(args.data, 'src_vocab_' + args.pivot_lang + '.pb'), 'rb'))
+        self.src_w2idx = {w:idx for idx, w in enumerate(self.src_vocab)}
+        self.tgt_vocab = pickle.load(open(os.path.join(args.data, 'tgt_vocab_' + args.pivot_lang + '.pb'), 'rb'))
+        self.tgt_w2idx = {w:idx for idx, w in enumerate(self.tgt_vocab)}
 
     def load_dataset(self):
         self.load_vocab()
         f = open(self.path, 'r')
         for lines in f:
+            # print(lines)
             lines = json.loads(lines.rstrip('\n'))
-            self.x.append(self.w2idx[lines['x']])
-            self.y.append(self.w2idx[lines['y']])
+            self.x.append(self.src_w2idx[lines['x']])
+            self.y.append(self.tgt_w2idx[lines['y']])
             self.pos_x.append(lines['pos_x'])
             self.pos_y.append(lines['pos_y'])
 
@@ -139,12 +144,13 @@ d = Dataset(os.path.join(args.data, 'crosslingual/dictionaries/train.' + args.pi
 d.load_dataset()
 print('Loaded and binarized datasets')
 
-emb = torch.tensor(pickle.load(open(os.path.join(args.data, 'joined_emb.pb'), 'rb'))).to(device)
+src_emb = torch.tensor(pickle.load(open(os.path.join(args.data, 'src_emb_' + args.pivot_lang + '.pb'), 'rb'))).to(device)
+tgt_emb = torch.tensor(pickle.load(open(os.path.join(args.data, 'tgt_emb_' + args.pivot_lang + '.pb'), 'rb'))).to(device)
 
 lr = args.lr
 best_val_loss = None
 
-synsem = model.Synsem(len(d.vocab), args.emsize, len(d.pos_classes_x), len(d.pos_classes_y), emb).to(device)
+synsem = model.Synsem(len(d.src_vocab), len(d.tgt_vocab), args.emsize, len(d.pos_classes_x), len(d.pos_classes_y), src_emb, tgt_emb).to(device)
 
 criterion = nn.CrossEntropyLoss()
 
@@ -152,10 +158,19 @@ optimizer = torch.optim.Adagrad(synsem.parameters(), lr=lr) if args.optim == 'ad
                 else torch.optim.Adam(synsem.parameters(), lr=lr) if args.optim == 'adam' \
                 else torch.optim.SGD(synsem.parameters(), lr=lr)
 
-milestones = [10, 20, 30, 40]
+milestones = [50, 60, 70]
 print(milestones)
 scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=milestones)
 # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 3)
+def orthogonalize(mat):
+    """
+    Orthogonalize the mapping.
+    """
+    if args.beta > 0:
+        W = mat.data
+        beta = args.beta
+        W.copy_((1 + beta) * W - beta * W.mm(W.transpose(0, 1).mm(W)))
+
 
 def train(epoch):
     # Turn on training mode which enables dropout.
@@ -186,6 +201,7 @@ def train(epoch):
         # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
         torch.nn.utils.clip_grad_norm_(synsem.parameters(), args.clip)
         optimizer.step()
+        orthogonalize(synsem.W)
 
         total_loss_ += total_loss.item()
         translation_loss_ += translation_loss.item()
@@ -203,21 +219,25 @@ def train(epoch):
             elapsed = time.time() - start_time
             print('| epoch {:3d} | {:5d}/{:5d} batches | lr {:02.10f} | ms/batch {:5.2f} | loss {:5.2f} | translation loss {:5.2f} |  reconstruction loss {:5.2f} | semantic loss {:5.2f} | syntactic loss {:5.2f} |'
                     .format(epoch, i, num_batches, optimizer.param_groups[0]['lr'], elapsed * 1000 / args.log_interval,
-                        cur_loss, cur_translation_loss, cur_reconstruction_loss, cur_semantic_loss, cur_semantic_loss))
+                        cur_loss, cur_translation_loss, cur_reconstruction_loss, cur_semantic_loss, cur_syntactic_loss))
 
 
             start_time = time.time()
-            total_loss_ = 0
-            translation_loss_ = 0
-            reconstruction_loss_ = 0
-            semantic_loss_ = 0
-            syntactic_loss_ = 0
+            total_loss_ = 0.
+            translation_loss_ = 0.
+            reconstruction_loss_ = 0.
+            semantic_loss_ = 0.
+            syntactic_loss_ = 0.
 
     print()
 
 
+common_vocab = d.src_vocab[1:] + d.tgt_vocab # remove UNK from src vocab
+final_emb = torch.cat((synsem.src_emb.weight.data[1:, :], synsem.tgt_emb.weight.data), dim=0)
 
 model_name = os.path.join(args.save, 'model_' + args.data + '_'  + str(args.emsize) + '_' + args.pivot_lang + '.pt')
+common_vocab_name = os.path.join(args.save_emb, 'common_vocab_' + args.data + '_'  + str(args.emsize) + '_' + args.pivot_lang + '.pb')
+final_emb_name = os.path.join(args.save_emb, 'final_emb_' + args.data + '_'  + str(args.emsize) + '_' + args.pivot_lang + '.pb')
 syn_emb_name = os.path.join(args.save_emb, 'syn_emb_' + args.data + '_'  + str(args.emsize) + '_' + args.pivot_lang + '.pb')
 sem_emb_name = os.path.join(args.save_emb, 'sem_emb_' + args.data + '_'  + str(args.emsize) + '_' + args.pivot_lang + '.pb')
 w_name = os.path.join(args.save_emb, 'W_' + args.data + '_'  + str(args.emsize) + '_' + args.pivot_lang + '.pb')
@@ -227,8 +247,6 @@ try:
         epoch_start_time = time.time()
         train(epoch)
 
-
-
 except KeyboardInterrupt:
     print('-' * 89)
     print('Exiting from training early')
@@ -237,6 +255,8 @@ print('Saving Model')
 with open(model_name, 'wb') as f:
    torch.save(synsem, f)
 print('Saving learnt embeddings : %s' % syn_emb_name)
-pickle.dump(synsem.syn_emb.weight.data, open(syn_emb_name, 'wb'))
-pickle.dump(synsem.sem_emb.weight.data, open(sem_emb_name, 'wb'))
+pickle.dump(final_emb, open(final_emb_name, 'wb'))
+pickle.dump(common_vocab, open(common_vocab_name, 'wb'))
+pickle.dump(torch.mm(final_emb, synsem.W.data), open(sem_emb_name, 'wb'))
+pickle.dump(final_emb - torch.mm(final_emb, synsem.W.data), open(syn_emb_name, 'wb'))
 pickle.dump(synsem.W.data, open(w_name, 'wb'))

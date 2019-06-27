@@ -4,3 +4,5 @@ models/*
 data/*
 embeddings/*
 analogy_tasks/unsup_datasets/*
+synsem*
+__pycache__/*

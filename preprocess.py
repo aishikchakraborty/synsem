@@ -35,9 +35,13 @@ parser.add_argument('--max-vocab', type=int, default=10000,
 
 
 args = parser.parse_args()
-word2idx = {'<unk>':0}
-idx2word = ['<unk>']
-emb_dict = {'<unk>':np.random.rand(300,).tolist()}
+src_word2idx = {'<unk>':0}
+src_idx2word = ['<unk>']
+src_emb_dict = {'<unk>':np.random.rand(300,).tolist()}
+
+tgt_word2idx = {'<unk>':0}
+tgt_idx2word = ['<unk>']
+tgt_emb_dict = {'<unk>':np.random.rand(300,).tolist()}
 
 spacy.require_gpu()
 
@@ -67,7 +71,7 @@ def remove_non_ascii(text):
 def preprocessing(text):
     return [tok for tok in text if tok not in stopwords and tok not in string.punctuation]
 
-def add_word(word):
+def add_word(word, word2idx, idx2word):
     if word not in word2idx:
         idx2word.append(word)
         word2idx[word] = len(idx2word) - 1
@@ -87,7 +91,15 @@ def return_spacy_model(lng):
     elif lng == 'fr':
         return nlp_fr
 
-def load_embeddings(lng):
+def load_embeddings(lng, mode='src'):
+    if mode == 'src':
+        word2idx = src_word2idx
+        idx2word = src_idx2word
+        emb_dict = src_emb_dict
+    else:
+        word2idx = tgt_word2idx
+        idx2word = tgt_idx2word
+        emb_dict = tgt_emb_dict
     emb_path = os.path.join(args.data, 'monolingual/wiki.' + lng + '.vec')
     with io.open(emb_path, 'r', encoding='utf-8', newline='\n', errors='ignore') as f:
         for idx, lines in enumerate(f):
@@ -97,6 +109,7 @@ def load_embeddings(lng):
                 break
             word, vect = lines.rstrip('\n').split(' ', 1)
             word = (lng + '_' + word.lower())
+            add_word(word, word2idx, idx2word)
             vect = np.fromstring(vect, sep=' ')
             if np.linalg.norm(vect) == 0:  # avoid to have null embeddings
                 vect[0] = 0.01
@@ -105,12 +118,17 @@ def load_embeddings(lng):
 
     return emb_dict
 
-def create_vocab(in_path, add_eos=True):
-    for w in get_tokens_from_file(in_path, add_eos):
-        add_word(w)
 
-def create_joint_embeddings():
+def export_embeddings(mode='src'):
     embs = []
+    if mode == 'src':
+        word2idx = src_word2idx
+        idx2word = src_idx2word
+        emb_dict = src_emb_dict
+    else:
+        word2idx = tgt_word2idx
+        idx2word = tgt_idx2word
+        emb_dict = tgt_emb_dict
     for w in idx2word:
         if w in emb_dict:
             embs.append(emb_dict[w])
@@ -125,15 +143,15 @@ def preprocess():
     all_lng.remove(tgt_lng)
     src_lng = all_lng
     fout = open(os.path.join(args.data, 'crosslingual/dictionaries/train.' + tgt_lng + '.txt'), 'w')
-    load_embeddings(tgt_lng)
+    load_embeddings(tgt_lng, 'tgt')
     print('Loaded embeddings for language: ' + str(tgt_lng))
     for src in tqdm(src_lng, total=len(src_lng)):
         fin = open(os.path.join(args.data, 'crosslingual/dictionaries/' + src + '-' + tgt_lng + '.0-5000.txt'), 'r')
         for lines in fin:
             lines  = lines.rstrip('\n').split()
             try:
-                add_word(src + '_' + lines[0])
-                add_word(src + '_' + lines[1])
+                add_word(src + '_' + lines[0], src_word2idx, src_idx2word)
+                add_word(tgt_lng + '_' + lines[1], tgt_word2idx, tgt_idx2word)
             except:
                 continue
             nlp_src = return_spacy_model(src)
@@ -141,16 +159,20 @@ def preprocess():
             src_pos = nlp_src(lines[0])[0].pos_
             tgt_pos = nlp_tgt(lines[1])[0].pos_
 
-            output = {'x': src + '_' + lines[0], 'y': src + '_' + lines[1], 'pos_x': src_pos, 'pos_y': tgt_pos}
+            output = {'x': src + '_' + lines[0], 'y': tgt_lng + '_' + lines[1], 'pos_x': src_pos, 'pos_y': tgt_pos}
             fout.write(str(json.dumps(output) + '\n'))
-        load_embeddings(src)
+        load_embeddings(src, 'src')
         print('Loaded embeddings for language: ' + str(src))
 
-    if not os.path.isfile(os.path.join(args.data, 'joined_emb.pb')):
-        embs = create_joint_embeddings()
-        print('Created joint embeddings')
-        pickle.dump(embs, open(os.path.join(args.data, 'joined_emb.pb'), 'wb'))
-        pickle.dump(idx2word, open(os.path.join(args.data, 'vocab.pb'), 'wb'))
-        print('Saved joint embeddings')
+    embs = export_embeddings('src')
+    print('Created src embeddings')
+    pickle.dump(embs, open(os.path.join(args.data, 'src_emb_' + args.pivot_lang + '.pb'), 'wb'))
+    pickle.dump(src_idx2word, open(os.path.join(args.data, 'src_vocab_' + args.pivot_lang + '.pb'), 'wb'))
+    print('Saved src embeddings')
 
+    embs = export_embeddings('tgt')
+    print('Created tgt embeddings')
+    pickle.dump(embs, open(os.path.join(args.data, 'tgt_emb_' + args.pivot_lang + '.pb'), 'wb'))
+    pickle.dump(tgt_idx2word, open(os.path.join(args.data, 'tgt_vocab_' + args.pivot_lang + '.pb'), 'wb'))
+    print('Saved tgt embeddings')
 preprocess()
