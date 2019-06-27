@@ -154,6 +154,7 @@ class AnalogyExperiment():
                     w3_ = self.w2idx[w3.lower()]
                     w3 = self.emb[self.w2idx[w3.lower()]].view(1, -1)
                     # print(w3)
+                    print(w3)
                 except:
                     all_present = False
                     # w3 = self.sem_emb[self.w2idx['<unk>']].reshape(-1, 1)
@@ -161,6 +162,7 @@ class AnalogyExperiment():
                 try:
                     w4 = self.w2idx[w4.lower()]
                     # print(w4)
+                    print(w4)
                 except:
                     all_present = False
                     # w4 = self.w2idx['<unk>']
